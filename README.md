@@ -5,10 +5,15 @@ CrimeNet is a community-driven web application that helps communities defend and
 ## Features
 
 - Submit incident reports with photos and videos
-- AI-powered analysis of media for license plate detection and person identification
+- AI-powered analysis using Google Cloud Vision API:
+  - License plate detection and recognition
+  - Person detection with estimated attributes:
+    - Age range estimation
+    - Height approximation
+    - Detection confidence scoring
+- Automated social media posting to X (Twitter) and Reddit
 - Location-based incident mapping
 - Community comment system
-- Automated social media posting to X (Twitter) and Reddit
 - Mobile-responsive design
 
 ## Tech Stack
@@ -16,15 +21,16 @@ CrimeNet is a community-driven web application that helps communities defend and
 - Vue.js 3 - Frontend framework
 - Tailwind CSS - Styling
 - Vite - Build tool
+- Google Cloud Vision API - Image analysis
 - Twitter API v2 - Social media integration
 - Reddit API - Social media integration
-- Google Gemini AI - Media analysis (to be implemented)
 - SQLite - Database (to be implemented)
 
 ## Prerequisites
 
 - Node.js (v16 or higher)
 - npm (v7 or higher)
+- Google Cloud Platform account with Vision API enabled
 - Twitter Developer Account with API access
 - Reddit Account with API access
 
@@ -46,6 +52,7 @@ npm install
 cp .env.example .env
 ```
 Edit the `.env` file with your API credentials:
+- Google Cloud Vision API credentials
 - Twitter API credentials
 - Reddit API credentials
 - Application configuration
@@ -56,6 +63,29 @@ npm run dev
 ```
 
 5. Open your browser and navigate to `http://localhost:5173`
+
+## AI Vision Integration
+
+### Google Cloud Vision API Setup
+1. Create a Google Cloud Platform account
+2. Enable the Cloud Vision API
+3. Create a service account and download the credentials JSON file
+4. Add the path to your credentials file in the `.env`:
+   ```
+   GOOGLE_CLOUD_VISION_KEYFILE=path/to/your/credentials.json
+   ```
+
+### Vision Analysis Features
+- **License Plate Detection**:
+  - Automatically detects and extracts license plate numbers from images
+  - High accuracy text recognition optimized for license plates
+  - Confidence scoring for detected plates
+
+- **Person Analysis**:
+  - Detects persons in images
+  - Estimates age ranges
+  - Approximates height
+  - Provides confidence scores for detections
 
 ## Social Media Integration
 
@@ -86,9 +116,11 @@ npm run dev
 crimenet-app/
 ├── src/
 │   ├── components/    # Reusable Vue components
+│   │   └── VisionAnalysisPreview.vue
 │   ├── views/         # Page components
 │   ├── router/        # Vue Router configuration
 │   ├── services/      # API and service integrations
+│   │   ├── vision.service.js
 │   │   ├── twitter.service.js
 │   │   ├── reddit.service.js
 │   │   └── social-media.service.js
@@ -103,16 +135,25 @@ crimenet-app/
 
 The application is structured around three main views:
 - Home: Displays recent incidents
-- Submit: Form for reporting new incidents with social media integration
-- IncidentDetail: Detailed view of specific incidents with AI analysis
+- Submit: Form for reporting new incidents with AI analysis and social media integration
+- IncidentDetail: Detailed view of specific incidents with AI analysis results
+
+### Vision Analysis Process
+When images are uploaded:
+1. Files are validated for size and type
+2. Images are processed through Google Cloud Vision API
+3. License plates and persons are detected
+4. Analysis results are displayed in real-time
+5. Results are included with the incident report
 
 ### Social Media Posting
 When a new incident is reported:
 1. The application validates the incident data
 2. Files are uploaded and processed
-3. The incident is posted to Twitter with media attachments (up to 4)
-4. The incident is posted to Reddit with formatted content and media links
-5. Any posting errors are handled and displayed to the user
+3. Vision analysis results are attached
+4. The incident is posted to Twitter with media attachments
+5. The incident is posted to Reddit with formatted content
+6. Any posting errors are handled and displayed to the user
 
 ## Contributing
 

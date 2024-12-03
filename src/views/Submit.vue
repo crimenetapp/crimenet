@@ -64,7 +64,8 @@
               </p>
             </div>
           </div>
-          <!-- Preview uploaded files -->
+
+          <!-- File Previews -->
           <div v-if="formData.files.length > 0" class="mt-4 grid grid-cols-2 gap-4">
             <div v-for="(file, index) in formData.files" :key="index" class="relative">
               <img 
@@ -88,6 +89,14 @@
               </button>
             </div>
           </div>
+
+          <!-- Vision Analysis Results -->
+          <VisionAnalysisPreview
+            v-if="formData.files.length > 0"
+            :analysis="visionAnalysis"
+            :is-analyzing="isAnalyzing"
+            :error="analysisError"
+          />
         </div>
 
         <!-- Status Messages -->
@@ -108,7 +117,7 @@
           <button 
             type="submit"
             class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-            :disabled="isSubmitting"
+            :disabled="isSubmitting || isAnalyzing"
           >
             {{ isSubmitting ? 'Submitting...' : 'Submit Report' }}
           </button>
@@ -120,9 +129,14 @@
 
 <script>
 import socialMediaService from '../services/social-media.service';
+import visionService from '../services/vision.service';
+import VisionAnalysisPreview from '../components/VisionAnalysisPreview.vue';
 
 export default {
   name: 'Submit',
+  components: {
+    VisionAnalysisPreview
+  },
   data() {
     return {
       formData: {
@@ -131,6 +145,9 @@ export default {
         description: '',
         files: []
       },
+      visionAnalysis: null,
+      isAnalyzing: false,
+      analysisError: null,
       isSubmitting: false,
       status: {
         message: '',
@@ -139,7 +156,7 @@ export default {
     }
   },
   methods: {
-    handleFileUpload(event) {
+    async handleFileUpload(event) {
       const newFiles = Array.from(event.target.files);
       
       // Validate file size and type
@@ -150,10 +167,71 @@ export default {
       });
 
       this.formData.files = [...this.formData.files, ...validFiles];
+
+      // Analyze new image files
+      const imageFiles = validFiles.filter(file => file.type.startsWith('image/'));
+      if (imageFiles.length > 0) {
+        await this.analyzeImages(imageFiles);
+      }
+    },
+
+    async analyzeImages(files) {
+      this.isAnalyzing = true;
+      this.analysisError = null;
+      this.visionAnalysis = null;
+
+      try {
+        const analyses = await Promise.all(
+          files.map(async file => {
+            const buffer = await this.fileToBuffer(file);
+            return visionService.analyzeImage(buffer);
+          })
+        );
+
+        // Combine analyses results
+        this.visionAnalysis = this.combineAnalyses(analyses);
+      } catch (error) {
+        console.error('Error analyzing images:', error);
+        this.analysisError = 'Failed to analyze images. Please try again.';
+      } finally {
+        this.isAnalyzing = false;
+      }
+    },
+
+    async fileToBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(Buffer.from(reader.result));
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    },
+
+    combineAnalyses(analyses) {
+      // Combine multiple image analyses into a single result
+      return analyses.reduce((combined, analysis) => {
+        if (!combined) return analysis;
+
+        return {
+          licensePlate: {
+            found: combined.licensePlate.found || analysis.licensePlate.found,
+            plate: analysis.licensePlate.found ? analysis.licensePlate.plate : combined.licensePlate.plate
+          },
+          persons: {
+            found: combined.persons.found || analysis.persons.found,
+            persons: [...combined.persons.persons, ...analysis.persons.persons]
+          },
+          timestamp: new Date().toISOString()
+        };
+      }, null);
     },
 
     removeFile(index) {
       this.formData.files.splice(index, 1);
+      if (this.formData.files.length === 0) {
+        this.visionAnalysis = null;
+        this.analysisError = null;
+      }
     },
 
     async uploadFiles() {
@@ -172,12 +250,13 @@ export default {
         // Upload files first
         const mediaUrls = await this.uploadFiles();
 
-        // Prepare incident data
+        // Prepare incident data with vision analysis
         const incident = {
           description: this.formData.description,
           zipCode: this.formData.zipCode,
           date: this.formData.date,
-          mediaUrls
+          mediaUrls,
+          analysis: this.visionAnalysis
         };
 
         // Validate incident data
