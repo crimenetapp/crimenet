@@ -55,7 +55,7 @@
               <div class="flex text-sm text-gray-600">
                 <label class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
                   <span>Upload files</span>
-                  <input type="file" class="sr-only" multiple @change="handleFileUpload">
+                  <input type="file" class="sr-only" multiple @change="handleFileUpload" accept="image/*,video/*">
                 </label>
                 <p class="pl-1">or drag and drop</p>
               </div>
@@ -64,6 +64,38 @@
               </p>
             </div>
           </div>
+          <!-- Preview uploaded files -->
+          <div v-if="formData.files.length > 0" class="mt-4 grid grid-cols-2 gap-4">
+            <div v-for="(file, index) in formData.files" :key="index" class="relative">
+              <img 
+                v-if="file.type.startsWith('image/')"
+                :src="URL.createObjectURL(file)"
+                class="h-24 w-full object-cover rounded"
+                alt="Preview"
+              >
+              <video 
+                v-else-if="file.type.startsWith('video/')"
+                :src="URL.createObjectURL(file)"
+                class="h-24 w-full object-cover rounded"
+                controls
+              ></video>
+              <button 
+                @click="removeFile(index)"
+                class="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 transform translate-x-1/2 -translate-y-1/2"
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Messages -->
+        <div v-if="status.message" :class="[
+          'p-4 rounded-md',
+          status.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+        ]">
+          {{ status.message }}
         </div>
 
         <div class="flex items-center justify-between">
@@ -76,8 +108,9 @@
           <button 
             type="submit"
             class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            :disabled="isSubmitting"
           >
-            Submit Report
+            {{ isSubmitting ? 'Submitting...' : 'Submit Report' }}
           </button>
         </div>
       </form>
@@ -86,6 +119,8 @@
 </template>
 
 <script>
+import socialMediaService from '../services/social-media.service';
+
 export default {
   name: 'Submit',
   data() {
@@ -95,18 +130,83 @@ export default {
         zipCode: '',
         description: '',
         files: []
+      },
+      isSubmitting: false,
+      status: {
+        message: '',
+        type: 'success'
       }
     }
   },
   methods: {
     handleFileUpload(event) {
-      this.formData.files = Array.from(event.target.files)
+      const newFiles = Array.from(event.target.files);
+      
+      // Validate file size and type
+      const validFiles = newFiles.filter(file => {
+        const isValidType = file.type.startsWith('image/') || file.type.startsWith('video/');
+        const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB
+        return isValidType && isValidSize;
+      });
+
+      this.formData.files = [...this.formData.files, ...validFiles];
     },
-    handleSubmit() {
-      // TODO: Implement form submission logic
-      console.log('Form submitted:', this.formData)
-      // Navigate back to home after submission
-      this.$router.push('/')
+
+    removeFile(index) {
+      this.formData.files.splice(index, 1);
+    },
+
+    async uploadFiles() {
+      // TODO: Implement file upload to server/cloud storage
+      // For now, return mock URLs
+      return this.formData.files.map((file, index) => 
+        `https://example.com/media/${index}-${file.name}`
+      );
+    },
+
+    async handleSubmit() {
+      try {
+        this.isSubmitting = true;
+        this.status.message = '';
+
+        // Upload files first
+        const mediaUrls = await this.uploadFiles();
+
+        // Prepare incident data
+        const incident = {
+          description: this.formData.description,
+          zipCode: this.formData.zipCode,
+          date: this.formData.date,
+          mediaUrls
+        };
+
+        // Validate incident data
+        socialMediaService.validateIncident(incident);
+
+        // Post to social media
+        const results = await socialMediaService.postIncident(incident);
+
+        // Handle results
+        if (results.errors.length > 0) {
+          const platforms = results.errors.map(e => e.platform).join(', ');
+          this.status.message = `Report submitted, but failed to post to: ${platforms}`;
+          this.status.type = 'error';
+        } else {
+          this.status.message = 'Report submitted successfully!';
+          this.status.type = 'success';
+          
+          // Navigate back to home after a short delay
+          setTimeout(() => {
+            this.$router.push('/');
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Error submitting report:', error);
+        this.status.message = error.message || 'Error submitting report';
+        this.status.type = 'error';
+      } finally {
+        this.isSubmitting = false;
+      }
     }
   }
 }
